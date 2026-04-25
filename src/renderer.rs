@@ -1,16 +1,16 @@
-#[allow(unused_imports)]
-use super::window::Window;
 use anyhow::Result;
-use std::fs::File;
-use std::io::Read;
 use windows::{
     core::*, Win32::Foundation::*, Win32::Graphics::Direct3D::Fxc::*, Win32::Graphics::Direct3D::*,
     Win32::Graphics::Direct3D11::*, Win32::Graphics::Dxgi::Common::*, Win32::Graphics::Dxgi::*,
     Win32::Graphics::Gdi::*, Win32::System::LibraryLoader::*, Win32::UI::WindowsAndMessaging::*,
 };
 
-use super::color::*;
-use super::vertex::*;
+use crate::objects::color::*;
+use crate::objects::rectangle::*;
+use crate::objects::triangle::*;
+use crate::objects::vertex::*;
+use crate::objects::*;
+use crate::vertex_data::*;
 
 #[derive(Debug)]
 pub struct Renderer {
@@ -18,11 +18,11 @@ pub struct Renderer {
     device: ID3D11Device1,
     context: ID3D11DeviceContext1,
     swap_chain: IDXGISwapChain1,
-    render_view: ID3D11RenderTargetView,
+    render_target_view: ID3D11RenderTargetView,
     vertex_shader: ID3D11VertexShader,
     pixel_shader: ID3D11PixelShader,
     input_layout: ID3D11InputLayout,
-    vertex_buffer: ID3D11Buffer,
+    vertex_data: VertexData,
 }
 
 unsafe impl Sync for Renderer {}
@@ -36,7 +36,8 @@ impl Renderer {
         swap_chain: IDXGISwapChain1,
     ) -> Result<Self> {
         unsafe {
-            let render_view = {
+            // single render target for now
+            let render_target_view = {
                 let frame_buffer = swap_chain.GetBuffer::<ID3D11Texture2D>(0)?;
                 let mut buffer_view = None;
                 device.CreateRenderTargetView(&frame_buffer, None, Some(&mut buffer_view))?;
@@ -80,7 +81,7 @@ impl Renderer {
                 (vs_blob, vertex_shader.unwrap())
             };
 
-            let (ps_blob, pixel_shader) = {
+            let pixel_shader = {
                 let mut ps_blob = None;
                 let mut error_blob = None;
 
@@ -114,7 +115,7 @@ impl Renderer {
 
                 device.CreatePixelShader(bytes, None, Some(&mut pixel_shader))?;
 
-                (ps_blob, pixel_shader.unwrap())
+                pixel_shader.unwrap()
             };
 
             let input_layout = {
@@ -151,61 +152,68 @@ impl Renderer {
                 layout.unwrap()
             };
 
-            let vertex_data = [
-                Triangle::new([
-                    Vertex::new(Vec2::new([0.0, 0.50]), Color::new([1., 0., 0., 1.])),
-                    Vertex::new(Vec2::new([0.25, 0.25]), Color::new([1., 0., 0., 1.])),
-                    Vertex::new(Vec2::new([-0.25, 0.25]), Color::new([1., 0., 0., 1.])),
-                ]),
-                Triangle::new([
-                    Vertex::new(Vec2::new([0.0, -0.50]), Color::new([0., 1., 0., 1.])),
-                    Vertex::new(Vec2::new([0.25, -0.75]), Color::new([1., 0., 0., 1.])),
-                    Vertex::new(Vec2::new([-0.25, -0.75]), Color::new([0., 0., 1., 1.])),
-                ]),
-            ];
+            Ok(Self {
+                hwnd,
+                device,
+                context,
+                swap_chain,
+                render_target_view,
+                vertex_shader,
+                pixel_shader,
+                input_layout,
+                vertex_data: VertexData::new(),
+            })
+        }
+    }
 
-            let (vertex_buffer, offset) = {
-                let offset = 0;
+    pub fn queue_rectangle(
+        &mut self,
+        pos: Vec2,
+        width: f32,
+        height: f32,
+        color: Color,
+    ) -> Result<()> {
+        let mut rect = RECT::default();
+        unsafe { GetClientRect(self.hwnd, &mut rect)? };
 
+        let window_width = (rect.right - rect.left) as f32;
+        let window_height = (rect.bottom - rect.top) as f32;
+
+        let mut rectangle = Rectangle::new(pos, width, height, color);
+
+        rectangle.normalize(window_width, window_height);
+
+        self.vertex_data.push(Object::Rectangle(rectangle));
+
+        Ok(())
+    }
+
+    pub fn new_frame(&self) -> Result<()> {
+        unsafe {
+            let vertex_buffer = {
                 let vertex_buffer_desc = D3D11_BUFFER_DESC {
-                    ByteWidth: vertex_data.len() as u32 * Triangle::size(),
+                    ByteWidth: self.vertex_data.count() * self.vertex_data.stride,
                     Usage: D3D11_USAGE_IMMUTABLE,
                     BindFlags: D3D11_BIND_VERTEX_BUFFER.0 as u32,
                     ..Default::default()
                 };
 
                 let vertex_subresource_data = D3D11_SUBRESOURCE_DATA {
-                    pSysMem: vertex_data.as_ptr() as _,
+                    pSysMem: self.vertex_data.data.as_ptr() as _,
                     ..Default::default()
                 };
 
                 let mut buffer = None;
 
-                device.CreateBuffer(
+                self.device.CreateBuffer(
                     &vertex_buffer_desc,
                     Some(&vertex_subresource_data),
                     Some(&mut buffer),
                 )?;
 
-                (buffer.unwrap(), offset)
+                buffer.unwrap()
             };
 
-            Ok(Self {
-                hwnd,
-                device,
-                context,
-                swap_chain,
-                render_view,
-                vertex_shader,
-                pixel_shader,
-                input_layout,
-                vertex_buffer,
-            })
-        }
-    }
-
-    pub fn new_frame(&self) -> Result<()> {
-        unsafe {
             let mut rect = RECT::default();
             GetClientRect(self.hwnd, &mut rect)?;
 
@@ -221,10 +229,11 @@ impl Renderer {
             self.context.RSSetViewports(Some(&[viewport]));
 
             self.context
-                .OMSetRenderTargets(Some(&[Some(self.render_view.clone())]), None);
+                .OMSetRenderTargets(Some(&[Some(self.render_target_view.clone())]), None);
 
             self.context
-                .IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                .IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+
             self.context.IASetInputLayout(&self.input_layout);
 
             self.context.VSSetShader(&self.vertex_shader, None);
@@ -235,16 +244,14 @@ impl Renderer {
             self.context.IASetVertexBuffers(
                 0,
                 1,
-                Some(&Some(self.vertex_buffer.clone())),
-                Some(&Triangle::stride()),
+                Some(&Some(vertex_buffer)),
+                Some(&self.vertex_data.stride),
                 Some(&offset),
             );
 
-            // TODO make this dynamic
-            self.context.Draw(6, 0);
+            self.context.Draw(self.vertex_data.count(), 0);
+            Ok(())
         }
-
-        Ok(())
     }
 }
 

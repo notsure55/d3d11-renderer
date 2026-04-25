@@ -9,78 +9,39 @@ use windows::{
     Win32::Graphics::Gdi::*, Win32::System::LibraryLoader::*, Win32::UI::WindowsAndMessaging::*,
 };
 
+use super::color::*;
+use super::vertex::*;
+
+#[derive(Debug)]
 pub struct Renderer {
-    pub window: Window,
-    device: ID3D11Device,
-    context: ID3D11DeviceContext,
-    swap_chain: IDXGISwapChain,
+    hwnd: HWND,
+    device: ID3D11Device1,
+    context: ID3D11DeviceContext1,
+    swap_chain: IDXGISwapChain1,
+    render_view: ID3D11RenderTargetView,
+    vertex_shader: ID3D11VertexShader,
+    pixel_shader: ID3D11PixelShader,
+    input_layout: ID3D11InputLayout,
+    vertex_buffer: ID3D11Buffer,
 }
 
+unsafe impl Sync for Renderer {}
+unsafe impl Send for Renderer {}
+
 impl Renderer {
-    pub fn run(window: Window) -> Result<()> {
+    pub fn new(
+        hwnd: HWND,
+        device: ID3D11Device1,
+        context: ID3D11DeviceContext1,
+        swap_chain: IDXGISwapChain1,
+    ) -> Result<Self> {
         unsafe {
-            let mut device = None;
-            let mut context = None;
-
-            let (device, context) = {
-                D3D11CreateDevice(
-                    None,
-                    D3D_DRIVER_TYPE_HARDWARE,
-                    HMODULE(std::ptr::null_mut()),
-                    D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                    Some(&D3D_LEVELS),
-                    D3D11_SDK_VERSION,
-                    Some(&mut device),
-                    None,
-                    Some(&mut context),
-                )?;
-
-                (
-                    device.unwrap().cast::<ID3D11Device1>()?,
-                    context.unwrap().cast::<ID3D11DeviceContext1>()?,
-                )
-            };
-
-            let swap_chain = {
-                let dxgi_device = device.clone().cast::<IDXGIDevice1>()?;
-                let dxgi_adapter = dxgi_device.GetAdapter()?;
-                let adapter_desc = dxgi_adapter.GetDesc()?;
-                let factory = dxgi_adapter.GetParent::<IDXGIFactory2>()?;
-
-                let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
-                    Width: 0,
-                    Height: 0,
-                    Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                    SampleDesc: DXGI_SAMPLE_DESC {
-                        Count: 1,
-                        Quality: 0,
-                    },
-                    BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                    BufferCount: 2,
-                    Scaling: DXGI_SCALING_STRETCH,
-                    SwapEffect: DXGI_SWAP_EFFECT_DISCARD,
-                    AlphaMode: DXGI_ALPHA_MODE_UNSPECIFIED,
-                    Flags: 0,
-                    ..Default::default()
-                };
-
-                factory.CreateSwapChainForHwnd(
-                    &device,
-                    window.hwnd,
-                    &swap_chain_desc,
-                    None,
-                    None,
-                )?
-            };
-
             let render_view = {
                 let frame_buffer = swap_chain.GetBuffer::<ID3D11Texture2D>(0)?;
                 let mut buffer_view = None;
                 device.CreateRenderTargetView(&frame_buffer, None, Some(&mut buffer_view))?;
                 buffer_view.unwrap()
             };
-
-            dbg!(&render_view);
 
             let (vs_blob, vertex_shader) = {
                 let mut vs_blob = None;
@@ -190,17 +151,24 @@ impl Renderer {
                 layout.unwrap()
             };
 
-            let (vertex_buffer, num_verts, stride, offset) = {
-                let vertex_data: [f32; 18] = [
-                    0.0, 0.5, 0., 1., 0., 1., 0.5, -0.5, 1., 0., 0., 1., -0.5, -0.5, 0., 0., 1., 1.,
-                ];
+            let vertex_data = [
+                Triangle::new([
+                    Vertex::new(Vec2::new([0.0, 0.50]), Color::new([1., 0., 0., 1.])),
+                    Vertex::new(Vec2::new([0.25, 0.25]), Color::new([1., 0., 0., 1.])),
+                    Vertex::new(Vec2::new([-0.25, 0.25]), Color::new([1., 0., 0., 1.])),
+                ]),
+                Triangle::new([
+                    Vertex::new(Vec2::new([0.0, -0.50]), Color::new([0., 1., 0., 1.])),
+                    Vertex::new(Vec2::new([0.25, -0.75]), Color::new([1., 0., 0., 1.])),
+                    Vertex::new(Vec2::new([-0.25, -0.75]), Color::new([0., 0., 1., 1.])),
+                ]),
+            ];
 
-                let stride = 6 * std::mem::size_of::<f32>();
-                let num_verts = std::mem::size_of_val(&vertex_data) / stride;
+            let (vertex_buffer, offset) = {
                 let offset = 0;
 
                 let vertex_buffer_desc = D3D11_BUFFER_DESC {
-                    ByteWidth: std::mem::size_of_val(&vertex_data) as u32,
+                    ByteWidth: vertex_data.len() as u32 * Triangle::size(),
                     Usage: D3D11_USAGE_IMMUTABLE,
                     BindFlags: D3D11_BIND_VERTEX_BUFFER.0 as u32,
                     ..Default::default()
@@ -219,54 +187,64 @@ impl Renderer {
                     Some(&mut buffer),
                 )?;
 
-                (buffer.unwrap(), num_verts as u32, stride as u32, offset)
+                (buffer.unwrap(), offset)
             };
 
-            loop {
-                if window.process_msg().is_err() {
-                    break;
-                }
-
-                let background_color = [0.1, 0.2, 0.6, 1.0];
-                context.ClearRenderTargetView(&render_view, &background_color);
-
-                let mut rect = RECT::default();
-                GetClientRect(window.hwnd, &mut rect)?;
-
-                let viewport = D3D11_VIEWPORT {
-                    TopLeftX: 0.0,
-                    TopLeftY: 0.0,
-                    Width: (rect.right - rect.left) as f32,
-                    Height: (rect.bottom - rect.top) as f32,
-                    MinDepth: 0.0,
-                    MaxDepth: 1.0,
-                };
-
-                context.RSSetViewports(Some(&[viewport]));
-
-                context.OMSetRenderTargets(Some(&[Some(render_view.clone())]), None);
-
-                context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-                context.IASetInputLayout(&input_layout);
-
-                context.VSSetShader(&vertex_shader, None);
-                context.PSSetShader(&pixel_shader, None);
-
-                context.IASetVertexBuffers(
-                    0,
-                    1,
-                    Some(&Some(vertex_buffer.clone())),
-                    Some(&stride),
-                    Some(&offset),
-                );
-
-                context.Draw(num_verts, 0);
-
-                swap_chain.Present(1, DXGI_PRESENT(0));
-            }
-
-            Ok(())
+            Ok(Self {
+                hwnd,
+                device,
+                context,
+                swap_chain,
+                render_view,
+                vertex_shader,
+                pixel_shader,
+                input_layout,
+                vertex_buffer,
+            })
         }
+    }
+
+    pub fn new_frame(&self) -> Result<()> {
+        unsafe {
+            let mut rect = RECT::default();
+            GetClientRect(self.hwnd, &mut rect)?;
+
+            let viewport = D3D11_VIEWPORT {
+                TopLeftX: 0.0,
+                TopLeftY: 0.0,
+                Width: (rect.right - rect.left) as f32,
+                Height: (rect.bottom - rect.top) as f32,
+                MinDepth: 0.0,
+                MaxDepth: 1.0,
+            };
+
+            self.context.RSSetViewports(Some(&[viewport]));
+
+            self.context
+                .OMSetRenderTargets(Some(&[Some(self.render_view.clone())]), None);
+
+            self.context
+                .IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            self.context.IASetInputLayout(&self.input_layout);
+
+            self.context.VSSetShader(&self.vertex_shader, None);
+            self.context.PSSetShader(&self.pixel_shader, None);
+
+            let offset = 0;
+
+            self.context.IASetVertexBuffers(
+                0,
+                1,
+                Some(&Some(self.vertex_buffer.clone())),
+                Some(&Triangle::stride()),
+                Some(&offset),
+            );
+
+            // TODO make this dynamic
+            self.context.Draw(6, 0);
+        }
+
+        Ok(())
     }
 }
 

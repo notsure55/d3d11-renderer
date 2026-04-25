@@ -4,5 +4,7 @@ use windows::{
     Win32::System::LibraryLoader::*, Win32::UI::WindowsAndMessaging::*,
 };
 
+pub mod color;
 pub mod renderer;
+pub mod vertex;
 pub mod window;

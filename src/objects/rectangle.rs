@@ -1,14 +1,24 @@
 use super::color::Color;
 use super::vertex::{Vec2, Vertex};
+use crate::objects::Primitive;
+
+use windows::Win32::Graphics::Direct3D::*;
 
 #[repr(C)]
 #[derive(Debug)]
 pub struct Rectangle {
     pub vertices: [Vertex; 5],
+    pub topology: D3D_PRIMITIVE_TOPOLOGY,
 }
 
 impl Rectangle {
-    pub fn new(pos: Vec2, width: f32, height: f32, color: Color) -> Self {
+    pub fn new(
+        pos: Vec2,
+        width: f32,
+        height: f32,
+        color: Color,
+        topology: D3D_PRIMITIVE_TOPOLOGY,
+    ) -> Self {
         let vertices = [
             // top left
             Vertex::new(pos.x, pos.y, color),
@@ -22,11 +32,15 @@ impl Rectangle {
             Vertex::new(pos.x, pos.y, color),
         ];
 
-        Self { vertices }
+        Self { vertices, topology }
     }
-    pub fn normalize(&mut self, window_width: f32, window_height: f32) {
-        for vertice in &mut self.vertices {
-            vertice.normalize(window_width, window_height);
-        }
+}
+
+impl Primitive for Rectangle {
+    fn get_vertices(&self) -> &[Vertex] {
+        &self.vertices
+    }
+    fn get_topology(&self) -> D3D_PRIMITIVE_TOPOLOGY {
+        self.topology
     }
 }

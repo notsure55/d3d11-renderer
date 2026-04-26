@@ -1,4 +1,9 @@
 use super::vertex::Vertex;
+use crate::objects::Primitive;
+
+use windows::Win32::Graphics::Direct3D::*;
+
+const TOPOLOGY: D3D_PRIMITIVE_TOPOLOGY = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -10,10 +15,13 @@ impl Triangle {
     pub fn new(vertices: [Vertex; 3]) -> Self {
         Self { vertices }
     }
-    pub fn vertice_count() -> u32 {
-        3
+}
+
+impl Primitive for Triangle {
+    fn get_vertices(&self) -> &[Vertex] {
+        &self.vertices
     }
-    pub fn size() -> u32 {
-        std::mem::size_of::<Triangle>() as u32
+    fn get_topology(&self) -> D3D_PRIMITIVE_TOPOLOGY {
+        TOPOLOGY
     }
 }

@@ -166,6 +166,32 @@ impl Renderer {
         }
     }
 
+    pub fn queue_rectangle_filled(
+        &mut self,
+        pos: Vec2,
+        width: f32,
+        height: f32,
+        color: Color,
+    ) -> Result<()> {
+        let mut rect = RECT::default();
+        unsafe { GetClientRect(self.hwnd, &mut rect)? };
+
+        let window_width = (rect.right - rect.left) as f32;
+        let window_height = (rect.bottom - rect.top) as f32;
+
+        let obj = Object::Rectangle(Rectangle::new(
+            pos,
+            width,
+            height,
+            color,
+            D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
+        ));
+
+        self.vertex_data.push(obj, window_width, window_height);
+
+        Ok(())
+    }
+
     pub fn queue_rectangle(
         &mut self,
         pos: Vec2,
@@ -179,11 +205,38 @@ impl Renderer {
         let window_width = (rect.right - rect.left) as f32;
         let window_height = (rect.bottom - rect.top) as f32;
 
-        let mut rectangle = Rectangle::new(pos, width, height, color);
+        let obj = Object::Rectangle(Rectangle::new(
+            pos,
+            width,
+            height,
+            color,
+            D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP,
+        ));
 
-        rectangle.normalize(window_width, window_height);
+        self.vertex_data.push(obj, window_width, window_height);
 
-        self.vertex_data.push(Object::Rectangle(rectangle));
+        Ok(())
+    }
+
+    pub fn queue_triangle(&mut self, vertices: [Vec2; 3], color: Color) -> Result<()> {
+        let mut rect = RECT::default();
+        unsafe { GetClientRect(self.hwnd, &mut rect)? };
+
+        let window_width = (rect.right - rect.left) as f32;
+        let window_height = (rect.bottom - rect.top) as f32;
+
+        let vertices = [
+            // left
+            Vertex::new(vertices[0].x, vertices[0].y, color),
+            // top
+            Vertex::new(vertices[1].x, vertices[1].y, color),
+            // right
+            Vertex::new(vertices[2].x, vertices[2].y, color),
+        ];
+
+        let obj = Object::Triangle(Triangle::new(vertices));
+
+        self.vertex_data.push(obj, window_width, window_height);
 
         Ok(())
     }
@@ -232,12 +285,11 @@ impl Renderer {
 
             self.context.RSSetViewports(Some(&[viewport]));
 
-            for (index, vertex_count) in self.vertex_data.index.iter() {
+            for object in self.vertex_data.object_data.iter() {
                 self.context
                     .OMSetRenderTargets(Some(&[Some(self.render_target_view.clone())]), None);
 
-                self.context
-                    .IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+                self.context.IASetPrimitiveTopology(object.topology);
 
                 self.context.IASetInputLayout(&self.input_layout);
 
@@ -254,10 +306,11 @@ impl Renderer {
                     Some(&offset),
                 );
 
-                self.context.Draw(*vertex_count, *index);
+                self.context.Draw(object.vertex_count, object.index);
             }
 
             self.vertex_data.clean();
+
             Ok(())
         }
     }

@@ -188,7 +188,11 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn new_frame(&self) -> Result<()> {
+    pub fn new_frame(&mut self) -> Result<()> {
+        if self.vertex_data.count() == 0 {
+            return Ok(());
+        }
+
         unsafe {
             let vertex_buffer = {
                 let vertex_buffer_desc = D3D11_BUFFER_DESC {
@@ -211,7 +215,7 @@ impl Renderer {
                     Some(&mut buffer),
                 )?;
 
-                buffer.unwrap()
+                buffer
             };
 
             let mut rect = RECT::default();
@@ -228,28 +232,32 @@ impl Renderer {
 
             self.context.RSSetViewports(Some(&[viewport]));
 
-            self.context
-                .OMSetRenderTargets(Some(&[Some(self.render_target_view.clone())]), None);
+            for (index, vertex_count) in self.vertex_data.index.iter() {
+                self.context
+                    .OMSetRenderTargets(Some(&[Some(self.render_target_view.clone())]), None);
 
-            self.context
-                .IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+                self.context
+                    .IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
-            self.context.IASetInputLayout(&self.input_layout);
+                self.context.IASetInputLayout(&self.input_layout);
 
-            self.context.VSSetShader(&self.vertex_shader, None);
-            self.context.PSSetShader(&self.pixel_shader, None);
+                self.context.VSSetShader(&self.vertex_shader, None);
+                self.context.PSSetShader(&self.pixel_shader, None);
 
-            let offset = 0;
+                let offset = 0;
 
-            self.context.IASetVertexBuffers(
-                0,
-                1,
-                Some(&Some(vertex_buffer)),
-                Some(&self.vertex_data.stride),
-                Some(&offset),
-            );
+                self.context.IASetVertexBuffers(
+                    0,
+                    1,
+                    Some(&vertex_buffer),
+                    Some(&self.vertex_data.stride),
+                    Some(&offset),
+                );
 
-            self.context.Draw(self.vertex_data.count(), 0);
+                self.context.Draw(*vertex_count, *index);
+            }
+
+            self.vertex_data.clean();
             Ok(())
         }
     }

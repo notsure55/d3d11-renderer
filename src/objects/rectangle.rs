@@ -4,7 +4,7 @@ use super::vertex::{Vec2, Vertex};
 #[repr(C)]
 #[derive(Debug)]
 pub struct Rectangle {
-    pub vertices: [Vertex; 4],
+    pub vertices: [Vertex; 5],
 }
 
 impl Rectangle {
@@ -18,6 +18,8 @@ impl Rectangle {
             Vertex::new(pos.x + width, pos.y + height, color),
             // top right
             Vertex::new(pos.x + width, pos.y, color),
+            // top left
+            Vertex::new(pos.x, pos.y, color),
         ];
 
         Self { vertices }

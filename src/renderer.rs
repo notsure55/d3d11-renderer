@@ -263,6 +263,12 @@ impl Renderer {
         for widget in self.widgets.iter() {
             let obj = widget.primitive();
             self.vertex_data.push(obj, window_width, window_height);
+
+            if let Some(ref objs) = widget.additional_prims() {
+                for obj in objs.iter() {
+                    self.vertex_data.push(obj, window_width, window_height);
+                }
+            }
         }
 
         Ok(())

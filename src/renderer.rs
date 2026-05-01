@@ -11,6 +11,8 @@ use crate::objects::triangle::*;
 use crate::objects::vertex::*;
 use crate::objects::*;
 use crate::vertex_data::*;
+use crate::widgets::*;
+use math::vec_two::Vec2;
 
 #[derive(Debug)]
 pub struct Renderer {
@@ -23,6 +25,7 @@ pub struct Renderer {
     pixel_shader: ID3D11PixelShader,
     input_layout: ID3D11InputLayout,
     vertex_data: VertexData,
+    widgets: Vec<Widget>,
 }
 
 unsafe impl Sync for Renderer {}
@@ -162,6 +165,7 @@ impl Renderer {
                 pixel_shader,
                 input_layout,
                 vertex_data: VertexData::new(),
+                widgets: vec![],
             })
         }
     }
@@ -187,7 +191,7 @@ impl Renderer {
             D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
         ));
 
-        self.vertex_data.push(obj, window_width, window_height);
+        self.vertex_data.push(&obj, window_width, window_height);
 
         Ok(())
     }
@@ -213,7 +217,7 @@ impl Renderer {
             D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP,
         ));
 
-        self.vertex_data.push(obj, window_width, window_height);
+        self.vertex_data.push(&obj, window_width, window_height);
 
         Ok(())
     }
@@ -234,14 +238,40 @@ impl Renderer {
             Vertex::new(vertices[2].x, vertices[2].y, color),
         ];
 
-        let obj = Object::Triangle(Triangle::new(vertices));
+        let obj = Object::Triangle(Triangle::from_vertices(vertices));
 
-        self.vertex_data.push(obj, window_width, window_height);
+        self.vertex_data.push(&obj, window_width, window_height);
+
+        Ok(())
+    }
+
+    pub fn store_widget(&mut self, widget: Widget) {
+        self.widgets.push(widget);
+    }
+
+    pub fn store_widgets(&mut self, widgets: &[Widget]) {
+        self.widgets.extend_from_slice(widgets);
+    }
+
+    pub fn queue_widgets(&mut self) -> Result<()> {
+        let mut rect = RECT::default();
+        unsafe { GetClientRect(self.hwnd, &mut rect)? };
+
+        let window_width = (rect.right - rect.left) as f32;
+        let window_height = (rect.bottom - rect.top) as f32;
+
+        for widget in self.widgets.iter() {
+            let obj = widget.primitive();
+            self.vertex_data.push(obj, window_width, window_height);
+        }
 
         Ok(())
     }
 
     pub fn new_frame(&mut self) -> Result<()> {
+        // for menu rendering
+        self.queue_widgets()?;
+
         if self.vertex_data.count() == 0 {
             return Ok(());
         }

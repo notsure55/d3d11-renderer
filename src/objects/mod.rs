@@ -3,13 +3,14 @@ pub mod rectangle;
 pub mod triangle;
 pub mod vertex;
 
+use math::vec_two::Vec2;
 use rectangle::Rectangle;
 use triangle::Triangle;
 use vertex::Vertex;
 
 use windows::Win32::Graphics::Direct3D::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Object {
     Rectangle(Rectangle),
     Triangle(Triangle),
@@ -34,6 +35,12 @@ impl Primitive for Object {
             Object::Triangle(tri) => tri.normalize(window_width, window_height),
         }
     }
+    fn in_bounds(&self, pos: Vec2) -> bool {
+        match self {
+            Object::Rectangle(rect) => rect.in_bounds(pos),
+            Object::Triangle(tri) => tri.in_bounds(pos),
+        }
+    }
 }
 
 pub trait Primitive {
@@ -47,4 +54,6 @@ pub trait Primitive {
             .map(|vert| vert.normalize(window_width, window_height))
             .collect()
     }
+
+    fn in_bounds(&self, pos: Vec2) -> bool;
 }

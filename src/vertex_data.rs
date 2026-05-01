@@ -34,7 +34,7 @@ impl VertexData {
     pub fn count(&self) -> u32 {
         self.data.len() as u32
     }
-    pub fn push(&mut self, obj: Object, window_width: f32, window_height: f32) {
+    pub fn push(&mut self, obj: &Object, window_width: f32, window_height: f32) {
         let vertices = obj.normalize(window_width, window_height);
         let topology = obj.get_topology();
         let current_index = self.data.len();

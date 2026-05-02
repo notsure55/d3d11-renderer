@@ -7,12 +7,12 @@ use windows::Win32::Graphics::Direct3D::*;
 
 const TOPOLOGY: D3D_PRIMITIVE_TOPOLOGY = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Triangle {
-    pub vertices: [Vertex; 3],
     pub center: Vec2,
     pub width: f32,
     pub height: f32,
+    pub color: Color,
 }
 
 impl Triangle {
@@ -23,31 +23,39 @@ impl Triangle {
         let center = Vec2::new(vertices[1].pos.x, vertices[1].pos.y + height / 2.0);
 
         Self {
-            vertices,
             center,
             width,
             height,
+            color: vertices[0].color,
         }
     }
     pub fn from_width_height(center: Vec2, width: f32, height: f32, color: Color) -> Self {
-        let vertices = [
-            Vertex::new(center.x - width / 2.0, center.y + height / 2.0, color),
-            Vertex::new(center.x, center.y - height / 2.0, color),
-            Vertex::new(center.x + width / 2.0, center.y + height / 2.0, color),
-        ];
-
         Self {
-            vertices,
             center,
             width,
             height,
+            color,
         }
     }
 }
 
 impl Primitive for Triangle {
-    fn get_vertices(&self) -> &[Vertex] {
-        &self.vertices
+    fn get_vertices(&self) -> Vec<Vertex> {
+        let vertices = vec![
+            Vertex::new(
+                self.center.x - self.width / 2.0,
+                self.center.y + self.height / 2.0,
+                self.color,
+            ),
+            Vertex::new(self.center.x, self.center.y - self.height / 2.0, self.color),
+            Vertex::new(
+                self.center.x + self.width / 2.0,
+                self.center.y + self.height / 2.0,
+                self.color,
+            ),
+        ];
+
+        vertices
     }
     fn get_topology(&self) -> D3D_PRIMITIVE_TOPOLOGY {
         TOPOLOGY
@@ -55,5 +63,8 @@ impl Primitive for Triangle {
     // TODO implement bounds for triangles
     fn in_bounds(&self, _pos: Vec2) -> bool {
         false
+    }
+    fn pos(&mut self) -> &mut Vec2 {
+        &mut self.center
     }
 }

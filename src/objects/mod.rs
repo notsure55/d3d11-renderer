@@ -12,7 +12,7 @@ use vertex::Vertex;
 
 use windows::Win32::Graphics::Direct3D::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Object {
     Rectangle(Rectangle),
     Triangle(Triangle),
@@ -20,7 +20,7 @@ pub enum Object {
 }
 
 impl Primitive for Object {
-    fn get_vertices(&self) -> &[Vertex] {
+    fn get_vertices(&self) -> Vec<Vertex> {
         match self {
             Object::Rectangle(rect) => rect.get_vertices(),
             Object::Triangle(triangle) => triangle.get_vertices(),
@@ -48,19 +48,35 @@ impl Primitive for Object {
             Object::Cross(cross) => cross.in_bounds(pos),
         }
     }
+    fn pos(&mut self) -> &mut Vec2 {
+        match self {
+            Object::Rectangle(rect) => rect.pos(),
+            Object::Triangle(tri) => tri.pos(),
+            Object::Cross(cross) => cross.pos(),
+        }
+    }
 }
 
 pub trait Primitive {
-    fn get_vertices(&self) -> &[Vertex];
+    fn get_vertices(&self) -> Vec<Vertex>;
 
     fn get_topology(&self) -> D3D_PRIMITIVE_TOPOLOGY;
 
     fn normalize(&self, window_width: f32, window_height: f32) -> Vec<Vertex> {
-        self.get_vertices()
-            .iter()
-            .map(|vert| vert.normalize(window_width, window_height))
-            .collect()
+        let mut vertices = self.get_vertices();
+        vertices
+            .iter_mut()
+            .for_each(|vert| *vert = vert.normalize(window_width, window_height));
+
+        vertices
     }
 
     fn in_bounds(&self, pos: Vec2) -> bool;
+
+    fn pos(&mut self) -> &mut Vec2;
+
+    fn move_primitive(&mut self, diff: Vec2) {
+        let pos = self.pos();
+        *pos = *pos + diff;
+    }
 }

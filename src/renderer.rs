@@ -13,6 +13,7 @@ use crate::objects::*;
 use crate::vertex_data::*;
 use crate::widgets::*;
 use math::vec_two::Vec2;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Renderer {
@@ -25,7 +26,7 @@ pub struct Renderer {
     pixel_shader: ID3D11PixelShader,
     input_layout: ID3D11InputLayout,
     vertex_data: VertexData,
-    widgets: Vec<Widget>,
+    widgets: Option<Arc<Vec<Widget>>>,
 }
 
 unsafe impl Sync for Renderer {}
@@ -165,7 +166,7 @@ impl Renderer {
                 pixel_shader,
                 input_layout,
                 vertex_data: VertexData::new(),
-                widgets: vec![],
+                widgets: None,
             })
         }
     }
@@ -245,12 +246,8 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn store_widget(&mut self, widget: Widget) {
-        self.widgets.push(widget);
-    }
-
-    pub fn store_widgets(&mut self, widgets: &[Widget]) {
-        self.widgets.extend_from_slice(widgets);
+    pub fn store_widgets(&mut self, widgets: Arc<Vec<Widget>>) {
+        self.widgets = Some(widgets);
     }
 
     pub fn queue_widgets(&mut self) -> Result<()> {
@@ -260,13 +257,16 @@ impl Renderer {
         let window_width = (rect.right - rect.left) as f32;
         let window_height = (rect.bottom - rect.top) as f32;
 
-        for widget in self.widgets.iter() {
-            let obj = widget.primitive();
-            self.vertex_data.push(obj, window_width, window_height);
+        if let Some(ref widgets) = self.widgets {
+            for widget in widgets.iter() {
+                let obj = widget.primitive();
+                self.vertex_data.push(&obj, window_width, window_height);
 
-            if let Some(ref objs) = widget.additional_prims() {
-                for obj in objs.iter() {
-                    self.vertex_data.push(obj, window_width, window_height);
+                if let Some(ref objs) = widget.additional_prims() {
+                    for obj in objs.iter() {
+                        self.vertex_data
+                            .push(unsafe { &*obj.get() }, window_width, window_height);
+                    }
                 }
             }
         }

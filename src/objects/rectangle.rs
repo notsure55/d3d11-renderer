@@ -3,15 +3,17 @@ use super::vertex::Vertex;
 use crate::objects::Primitive;
 use math::vec_two::Vec2;
 
+use std::cell::Cell;
 use windows::Win32::Graphics::Direct3D::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Rectangle {
-    pub vertices: [Vertex; 5],
+    //pub vertices: [Vertex; 5],
     pub topology: D3D_PRIMITIVE_TOPOLOGY,
     pub top_left: Vec2,
     pub width: f32,
     pub height: f32,
+    pub color: Color,
 }
 
 impl Rectangle {
@@ -22,55 +24,44 @@ impl Rectangle {
         color: Color,
         topology: D3D_PRIMITIVE_TOPOLOGY,
     ) -> Self {
-        let vertices = [
-            // top left
-            Vertex::new(pos.x, pos.y, color),
-            // bottom left
-            Vertex::new(pos.x, pos.y + height, color),
-            // bottom right
-            Vertex::new(pos.x + width, pos.y + height, color),
-            // top right
-            Vertex::new(pos.x + width, pos.y, color),
-            // top left
-            Vertex::new(pos.x, pos.y, color),
-        ];
-
         Self {
-            vertices,
             topology,
             top_left: pos,
             width,
             height,
+            color,
         }
     }
 
     pub fn new_filled(pos: Vec2, width: f32, height: f32, color: Color) -> Self {
-        let vertices = [
-            // top left
-            Vertex::new(pos.x, pos.y, color),
-            // bottom left
-            Vertex::new(pos.x, pos.y + height, color),
-            // bottom right
-            Vertex::new(pos.x + width, pos.y + height, color),
-            // top right
-            Vertex::new(pos.x + width, pos.y, color),
-            // top left
-            Vertex::new(pos.x, pos.y, color),
-        ];
-
         Self {
-            vertices,
             topology: D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
             top_left: pos,
             width,
             height,
+            color,
         }
     }
 }
 
 impl Primitive for Rectangle {
-    fn get_vertices(&self) -> &[Vertex] {
-        &self.vertices
+    fn get_vertices(&self) -> Vec<Vertex> {
+        vec![
+            // top left
+            Vertex::new(self.top_left.x, self.top_left.y, self.color),
+            // bottom left
+            Vertex::new(self.top_left.x, self.top_left.y + self.height, self.color),
+            // bottom right
+            Vertex::new(
+                self.top_left.x + self.width,
+                self.top_left.y + self.height,
+                self.color,
+            ),
+            // top right
+            Vertex::new(self.top_left.x + self.width, self.top_left.y, self.color),
+            // top left
+            Vertex::new(self.top_left.x, self.top_left.y, self.color),
+        ]
     }
     fn get_topology(&self) -> D3D_PRIMITIVE_TOPOLOGY {
         self.topology
@@ -85,5 +76,8 @@ impl Primitive for Rectangle {
         } else {
             false
         }
+    }
+    fn pos(&mut self) -> &mut Vec2 {
+        &mut self.top_left
     }
 }

@@ -47,6 +47,21 @@ impl VertexData {
             topology: topology,
         })
     }
+    pub fn push_multiple(&mut self, objs: &[Object], window_width: f32, window_height: f32) {
+        for obj in objs.iter() {
+            let vertices = obj.normalize(window_width, window_height);
+            let topology = obj.get_topology();
+            let current_index = self.data.len();
+
+            self.data.extend(&vertices);
+
+            self.object_data.push(ObjectData {
+                index: current_index as u32,
+                vertex_count: vertices.len() as u32,
+                topology: topology,
+            })
+        }
+    }
     pub fn clean(&mut self) {
         self.data.clear();
         self.object_data.clear();

@@ -8,32 +8,21 @@ use windows::Win32::Graphics::Direct3D::*;
 
 const TOPOLOGY: D3D_PRIMITIVE_TOPOLOGY = D3D11_PRIMITIVE_TOPOLOGY_LINELIST;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Cross {
-    vertices: [Vertex; 4],
     center: Vec2,
     width: f32,
     height: f32,
+    color: Color,
 }
 
 impl Cross {
     pub fn new(center: Vec2, width: f32, height: f32, color: Color) -> Self {
-        let vertices = [
-            // top left
-            Vertex::new(center.x - width / 2.0, center.y - height / 2.0, color),
-            // bottom right
-            Vertex::new(center.x + width / 2.0, center.y + height / 2.0, color),
-            // top right
-            Vertex::new(center.x + width / 2.0, center.y - height / 2.0, color),
-            // bottom left
-            Vertex::new(center.x - width / 2.0, center.y + height / 2.0, color),
-        ];
-
         Self {
-            vertices,
             center,
             width,
             height,
+            color,
         }
     }
     pub fn new_from_rect(rect: &Rectangle, offset_inside: f32, color: Color) -> Self {
@@ -52,13 +41,41 @@ impl Cross {
 }
 
 impl Primitive for Cross {
-    fn get_vertices(&self) -> &[Vertex] {
-        &self.vertices
+    fn get_vertices(&self) -> Vec<Vertex> {
+        vec![
+            // top left
+            Vertex::new(
+                self.center.x - self.width / 2.0,
+                self.center.y - self.height / 2.0,
+                self.color,
+            ),
+            // bottom right
+            Vertex::new(
+                self.center.x + self.width / 2.0,
+                self.center.y + self.height / 2.0,
+                self.color,
+            ),
+            // top right
+            Vertex::new(
+                self.center.x + self.width / 2.0,
+                self.center.y - self.height / 2.0,
+                self.color,
+            ),
+            // bottom left
+            Vertex::new(
+                self.center.x - self.width / 2.0,
+                self.center.y + self.height / 2.0,
+                self.color,
+            ),
+        ]
     }
     fn get_topology(&self) -> D3D_PRIMITIVE_TOPOLOGY {
         TOPOLOGY
     }
     fn in_bounds(&self, _pos: Vec2) -> bool {
         false
+    }
+    fn pos(&mut self) -> &mut Vec2 {
+        &mut self.center
     }
 }

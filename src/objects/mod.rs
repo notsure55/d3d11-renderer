@@ -77,6 +77,6 @@ pub trait Primitive {
 
     fn move_primitive(&mut self, diff: Vec2) {
         let pos = self.pos();
-        *pos = *pos + diff;
+        *pos += diff;
     }
 }

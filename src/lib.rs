@@ -3,5 +3,5 @@
 
 pub mod objects;
 pub mod renderer;
+pub mod text;
 pub mod vertex_data;
-pub mod widgets;

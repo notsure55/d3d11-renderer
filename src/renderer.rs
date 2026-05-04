@@ -5,15 +5,14 @@ use windows::{
     Win32::Graphics::Gdi::*, Win32::System::LibraryLoader::*, Win32::UI::WindowsAndMessaging::*,
 };
 
+use super::text::TextRenderer;
 use crate::objects::color::*;
 use crate::objects::rectangle::*;
 use crate::objects::triangle::*;
 use crate::objects::vertex::*;
 use crate::objects::*;
 use crate::vertex_data::*;
-use crate::widgets::*;
 use math::vec_two::Vec2;
-use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Renderer {
@@ -26,7 +25,7 @@ pub struct Renderer {
     pixel_shader: ID3D11PixelShader,
     input_layout: ID3D11InputLayout,
     vertex_data: VertexData,
-    widgets: Option<Arc<Vec<Widget>>>,
+    //text: TextRenderer,
 }
 
 unsafe impl Sync for Renderer {}
@@ -156,6 +155,8 @@ impl Renderer {
                 layout.unwrap()
             };
 
+            //let text = TextRenderer::new(hwnd, &swap_chain)?;
+
             Ok(Self {
                 hwnd,
                 device,
@@ -166,7 +167,7 @@ impl Renderer {
                 pixel_shader,
                 input_layout,
                 vertex_data: VertexData::new(),
-                widgets: None,
+                //text,
             })
         }
     }
@@ -246,29 +247,15 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn store_widgets(&mut self, widgets: Arc<Vec<Widget>>) {
-        self.widgets = Some(widgets);
-    }
-
-    pub fn queue_widgets(&mut self) -> Result<()> {
+    pub fn queue_objects(&mut self, objects: &[Object]) -> Result<()> {
         let mut rect = RECT::default();
         unsafe { GetClientRect(self.hwnd, &mut rect)? };
 
         let window_width = (rect.right - rect.left) as f32;
         let window_height = (rect.bottom - rect.top) as f32;
 
-        if let Some(ref widgets) = self.widgets {
-            for widget in widgets.iter() {
-                let obj = widget.primitive();
-                self.vertex_data.push(&obj, window_width, window_height);
-
-                if let Some(ref objs) = widget.additional_prims() {
-                    for obj in objs.iter() {
-                        self.vertex_data
-                            .push(unsafe { &*obj.get() }, window_width, window_height);
-                    }
-                }
-            }
+        for obj in objects.iter() {
+            self.vertex_data.push(obj, window_width, window_height);
         }
 
         Ok(())
@@ -276,7 +263,7 @@ impl Renderer {
 
     pub fn new_frame(&mut self) -> Result<()> {
         // for menu rendering
-        self.queue_widgets()?;
+        //self.queue_widgets()?;
 
         if self.vertex_data.count() == 0 {
             return Ok(());
@@ -345,9 +332,67 @@ impl Renderer {
                 self.context.Draw(object.vertex_count, object.index);
             }
 
+            //self.text.draw();
+
             self.vertex_data.clean();
 
             Ok(())
+        }
+    }
+
+    pub fn create_new_d3dresources(
+        hwnd: HWND,
+        swap_chain: IDXGISwapChain1,
+    ) -> Result<(ID3D11Device1, ID3D11DeviceContext1, IDXGISwapChain1)> {
+        unsafe {
+            let swap_chain_desc = swap_chain.GetDesc()?;
+
+            let (device, context) = {
+                let mut device = None;
+                let mut context = None;
+
+                D3D11CreateDevice(
+                    None,
+                    D3D_DRIVER_TYPE_HARDWARE,
+                    HMODULE(std::ptr::null_mut()),
+                    D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                    Some(&D3D_LEVELS),
+                    D3D11_SDK_VERSION,
+                    Some(&mut device),
+                    None,
+                    Some(&mut context),
+                )?;
+
+                (
+                    device.unwrap().cast::<ID3D11Device1>()?,
+                    context.unwrap().cast::<ID3D11DeviceContext1>()?,
+                )
+            };
+
+            let swap_chain = {
+                let dxgi_device = device.clone().cast::<IDXGIDevice1>()?;
+                let dxgi_adapter = dxgi_device.GetAdapter()?;
+                let adapter_desc = dxgi_adapter.GetDesc()?;
+                let factory = dxgi_adapter.GetParent::<IDXGIFactory2>()?;
+
+                let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
+                    Width: swap_chain_desc.BufferDesc.Width,
+                    Height: swap_chain_desc.BufferDesc.Height,
+                    Format: swap_chain_desc.BufferDesc.Format,
+                    SampleDesc: swap_chain_desc.SampleDesc,
+                    BufferUsage: swap_chain_desc.BufferUsage,
+                    BufferCount: swap_chain_desc.BufferCount,
+                    Scaling: DXGI_SCALING_STRETCH,
+                    SwapEffect: DXGI_SWAP_EFFECT_DISCARD,
+                    AlphaMode: DXGI_ALPHA_MODE_UNSPECIFIED,
+                    Flags: 0,
+                    ..Default::default()
+                };
+
+                factory.CreateSwapChainForHwnd(&device, hwnd, &swap_chain_desc, None, None)?
+            };
+
+            Ok((device, context, swap_chain))
         }
     }
 }

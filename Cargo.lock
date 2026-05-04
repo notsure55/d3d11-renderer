@@ -90,6 +90,7 @@ dependencies = [
  "math",
  "simple_logger",
  "windows",
+ "windows-core",
 ]
 
 [[package]]
